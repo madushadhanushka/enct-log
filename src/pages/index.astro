@@ -11,11 +11,206 @@ Any page or data can be rebuilt only when needed, without site visitors ever get
 `;
 ---
 
-<Layout title="Welcome to Astro.">
-    <ContextAlert class="mb-4" />
-    <h1 class="mb-10">Netlify Platform Starter for Astro</h1>
-    <Markdown content={explainer} class="text-lg mb-10" />
-    <p class="mb-8">
-        <a href="https://docs.netlify.com/frameworks/astro/" class="btn btn-lg btn-primary sm:btn-wide">Read the Docs</a>
-    </p>
-</Layout>
+
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { display: flex; gap: 20px; }
+        #logInput { 
+            width: 45%; height: 90vh; padding: 10px;
+            font-family: monospace; font-size: 12px;
+            background: #fff; border: 1px solid #ccc;
+        }
+        #timeline { 
+            width: 55%; height: 90vh; overflow-y: auto;
+            background: white; padding: 15px; border: 1px solid #ccc;
+        }
+        .event { margin: 5px 0; padding: 8px; }
+        .process { background: #e3f2fd; border-left: 4px solid #2196F3; }
+        .state { margin-left: 20px; background: #e8f5e9; border-left: 3px solid #4CAF50; }
+        .action { margin-left: 40px; background: #fff3e0; border-left: 2px solid #FF9800; }
+        .io { margin: 5px 0 5px 60px; padding: 5px; background: #f8f8f8; }
+        .timestamp { color: #666; font-size: 0.9em; }
+        .outcome { float: right; padding: 2px 5px; border-radius: 3px; }
+        .success { background: #c8e6c9; color: #2e7d32; }
+    </style>
+
+    <h1>Execution Timeline Viewer</h1>
+    <div class="container">
+        <div>
+            <textarea id="logInput" placeholder="Paste your log here..."></textarea>
+            <br>
+            <button onclick="processLog()">Show Timeline</button>
+        </div>
+        <div id="timeline"></div>
+    </div>
+
+    <script>
+        function processLog() {
+            const logText = document.getElementById('logInput').value;
+            const timeline = parseLog(logText);
+            renderTimeline(timeline);
+        }
+
+        function parseLog(logText) {
+            const timeline = [];
+            let currentProcess = null;
+            let currentState = null;
+            let currentAction = null;
+
+            logText.split('\n').forEach(line => {
+                const timestamp = line.substring(0, 23);
+                let event = null;
+
+                // Process detection
+                const processMatch = line.match(/Process\.([\w\/.]+)/);
+                if (processMatch) {
+                  if (currentProcess != null && currentProcess.name == processMatch[1].replace(/\./g, '/')) {
+                    
+                  } else {
+                    currentProcess = {
+                        name: processMatch[1].replace(/\./g, '/'),
+                        timestamp: timestamp,
+                        states: []
+                    };
+                    timeline.push({ type: 'process', data: currentProcess });
+                  }
+                    
+                }
+
+                // State detection
+                const stateMatch = line.match(/State:'([^']+)'/);
+                if (stateMatch && currentProcess) {
+                  if (currentState != null && currentState.name == stateMatch[1]) {
+                    
+                  } else {
+                      currentState = {
+                        name: stateMatch[1],
+                        timestamp: timestamp,
+                        actions: []
+                    };
+                    timeline.push({ type: 'state', data: currentState });
+                  }
+         
+                }
+
+                // Action handling
+                const actionMatch = line.match(/Execute Action:'([^']*)'/);
+                if (actionMatch && currentState) {
+                  //if (currentAction != null && currentAction.name == actionMatch[1]) {
+                    
+                  //} else {
+                                        currentAction = {
+                        name: actionMatch[1],
+                        timestamp: timestamp,
+                        inputs: {},
+                        outputs: {},
+                        outcome: 'Unknown'
+                    };
+                    timeline.push({ type: 'action', data: currentAction });
+                  //}
+
+                }
+
+                // Capture action details
+                if (currentAction) {
+                    const inputsMatch = line.match(/Action Inputs  for '[^']+' are \[([^\]]+)\]/);
+                    if (inputsMatch) parseKeyValues(inputsMatch[1], currentAction.inputs);
+
+                    const outputsMatch = line.match(/Action Outputs for '[^']+' are \[([^\]]+)\]/);
+                    if (outputsMatch) parseKeyValues(outputsMatch[1], currentAction.outputs);
+
+                    const outcomeMatch = line.match(/Action Outcome for '[^']+' is '([^']+)'/);
+                    if (outcomeMatch) currentAction.outcome = outcomeMatch[1];
+                }
+
+                // Process-level data
+                if (currentProcess) {
+                    const processInputsMatch = line.match(/Process Inputs are \[([^\]]+)\]/);
+                    if (processInputsMatch) {
+                        currentProcess.inputs = {};
+                        parseKeyValues(processInputsMatch[1], currentProcess.inputs);
+                    }
+                }
+            });
+
+            return timeline;
+        }
+
+        function parseKeyValues(str, obj) {
+            (str || '').split(', ').forEach(pair => {
+                const [key, value] = pair.split('=');
+                if (key && value) {
+                    const cleanKey = key.trim();
+                    const cleanValue = value.replace(/^'(.*)'$/, '$1').trim();
+                    obj[cleanKey] = cleanValue;
+                }
+            });
+        }
+
+        function renderTimeline(timeline) {
+            const container = document.getElementById('timeline');
+            container.innerHTML = '';
+
+            timeline.forEach(entry => {
+                let element;
+                switch(entry.type) {
+                    case 'process':
+                        element = createProcessElement(entry.data);
+                        break;
+                    case 'state':
+                        element = createStateElement(entry.data);
+                        break;
+                    case 'action':
+                        element = createActionElement(entry.data);
+                        break;
+                }
+                if (element) container.appendChild(element);
+            });
+        }
+
+        function createProcessElement(process) {
+            const div = document.createElement('div');
+            div.className = 'event process';
+            div.innerHTML = `
+                <div class="timestamp">${process.timestamp}</div>
+                <strong>Process:</strong> ${process.name}
+                ${process.inputs ? createIO('Inputs', process.inputs) : ''}
+            `;
+            return div;
+        }
+
+        function createStateElement(state) {
+            const div = document.createElement('div');
+            div.className = 'event state';
+            div.innerHTML = `
+                <div class="timestamp">${state.timestamp}</div>
+                <strong>State:</strong> ${state.name}
+            `;
+            return div;
+        }
+
+        function createActionElement(action) {
+            const div = document.createElement('div');
+            div.className = 'event action';
+            div.innerHTML = `
+                <div class="timestamp">${action.timestamp}</div>
+                <strong>Action:</strong> ${action.name}
+                <span class="outcome ${action.outcome.toLowerCase()}">${action.outcome}</span>
+                ${createIO('Inputs', action.inputs)}
+                ${createIO('Outputs', action.outputs)}
+            `;
+            return div;
+        }
+
+        function createIO(title, data) {
+            if (Object.keys(data).length === 0) return '';
+            return `
+                <div class="io">
+                    <div><strong>${title}:</strong></div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+    </script>
+
